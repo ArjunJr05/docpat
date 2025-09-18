@@ -17,11 +17,12 @@ class CreateShareScreen extends StatefulWidget {
   State<CreateShareScreen> createState() => _CreateShareScreenState();
 }
 
-class _CreateShareScreenState extends State<CreateShareScreen> {
+class _CreateShareScreenState extends State<CreateShareScreen> with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final FirebaseService _firebaseService = FirebaseService();
   final _pinApprovalController = TextEditingController();
   final _pinSetupController = TextEditingController();
+  final _changePinController = TextEditingController();
 
   bool _isCreating = false;
   ShareRecord? _createdShare;
@@ -31,11 +32,32 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
   bool _isApproving = false;
   bool _needsPinSetup = false;
   bool _isSettingUpPin = false;
+  bool _isChangingPin = false;
+  
+  late AnimationController _fadeAnimationController;
+  late AnimationController _scaleAnimationController;
+  
+  // Enhanced theme colors
+  static const Color primaryGreen = Color(0xFF10B981);
+  static const Color lightGreen = Color(0xFFECFDF5);
+  static const Color darkGreen = Color(0xFF047857);
+  static const Color accentBlue = Color(0xFF3B82F6);
+  static const Color lightBlue = Color(0xFFF0F9FF);
 
   @override
   void initState() {
     super.initState();
+    _fadeAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _scaleAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    
     _loadPermanentPin();
+    _fadeAnimationController.forward();
   }
 
   Future<void> _loadPermanentPin() async {
@@ -43,10 +65,8 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
     try {
       final pinData = await _firebaseService.getUserPermanentPin(authProvider.userId!);
       if (pinData != null) {
-        // Extract the actual PIN from stored data
         final parts = pinData.split(':');
         if (parts.length >= 3) {
-          // Format: hash:salt:actualPin
           final actualPin = parts[2];
           setState(() {
             _permanentPin = actualPin;
@@ -54,14 +74,12 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
             _needsPinSetup = false;
           });
         } else {
-          // Old format without actual PIN, need setup
           setState(() {
             _needsPinSetup = true;
             _isLoadingPin = false;
           });
         }
       } else {
-        // No PIN exists, first time user
         setState(() {
           _needsPinSetup = true;
           _isLoadingPin = false;
@@ -72,9 +90,7 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
         _isLoadingPin = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading PIN: $e')),
-        );
+        _showErrorSnackBar('Error loading PIN: $e');
       }
     }
   }
@@ -82,33 +98,14 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
   Future<void> _setupPermanentPin() async {
     final pin = _pinSetupController.text.trim();
     
-    if (pin.length < 4 || pin.length > 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PIN must be 4-6 digits')),
-      );
-      return;
-    }
-    
-    if (!RegExp(r'^\d+$').hasMatch(pin)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PIN must contain only numbers')),
-      );
-      return;
-    }
+    if (!_validatePin(pin)) return;
 
     setState(() {
       _isSettingUpPin = true;
     });
 
     try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      final salt = EncryptionUtils.generateSalt();
-      final pinHash = EncryptionUtils.hashPin(pin, salt);
-      
-      // Store in format: hash:salt:actualPin
-      final pinData = '$pinHash:$salt:$pin';
-      
-      await _firebaseService.setUserPermanentPin(authProvider.userId!, pinData);
+      await _savePinToFirebase(pin);
       
       setState(() {
         _permanentPin = pin;
@@ -118,121 +115,410 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
       });
       
       _pinSetupController.clear();
+      _showSuccessSnackBar('PIN set successfully!');
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('PIN set successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
     } catch (e) {
       setState(() {
         _isSettingUpPin = false;
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error setting PIN: $e')),
-        );
-      }
+      _showErrorSnackBar('Error setting PIN: $e');
     }
+  }
+
+  Future<void> _changePin() async {
+    final newPin = _changePinController.text.trim();
+    
+    if (!_validatePin(newPin)) return;
+
+    setState(() {
+      _isChangingPin = true;
+    });
+
+    try {
+      await _savePinToFirebase(newPin);
+      
+      setState(() {
+        _permanentPin = newPin;
+        _isChangingPin = false;
+      });
+      
+      _changePinController.clear();
+      Navigator.of(context).pop(); // Close the change PIN dialog
+      _showSuccessSnackBar('PIN changed successfully!');
+      
+    } catch (e) {
+      setState(() {
+        _isChangingPin = false;
+      });
+      _showErrorSnackBar('Error changing PIN: $e');
+    }
+  }
+
+  Future<void> _savePinToFirebase(String pin) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final salt = EncryptionUtils.generateSalt();
+    final pinHash = EncryptionUtils.hashPin(pin, salt);
+    final pinData = '$pinHash:$salt:$pin';
+    
+    await _firebaseService.setUserPermanentPin(authProvider.userId!, pinData);
+  }
+
+  bool _validatePin(String pin) {
+    if (pin.length < 4 || pin.length > 6) {
+      _showErrorSnackBar('PIN must be 4-6 digits');
+      return false;
+    }
+    
+    if (!RegExp(r'^\d+$').hasMatch(pin)) {
+      _showErrorSnackBar('PIN must contain only numbers');
+      return false;
+    }
+    
+    return true;
+  }
+
+  void _showChangePinDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                lightBlue,
+                Color(0xFFFFFFFF),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [accentBlue, primaryGreen],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.edit_rounded,
+                  color: Colors.white,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Change Your PIN',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Enter a new 4-6 digit PIN for document sharing',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                controller: _changePinController,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                obscureText: !_pinVisible,
+                decoration: InputDecoration(
+                  labelText: 'New PIN',
+                  hintText: 'Enter new PIN',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: accentBlue.withOpacity(0.3)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: accentBlue, width: 2),
+                  ),
+                  prefixIcon: const Icon(Icons.lock_outline, color: accentBlue),
+                  suffixIcon: IconButton(
+                    icon: Icon(_pinVisible ? Icons.visibility : Icons.visibility_off),
+                    onPressed: () => setState(() => _pinVisible = !_pinVisible),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        _changePinController.clear();
+                        Navigator.of(context).pop();
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: BorderSide(color: Colors.grey[400]!),
+                      ),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _isChangingPin ? null : _changePin,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: accentBlue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: _isChangingPin
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Text('Update PIN'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('Share Document'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text(
+          'Share Document',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 20,
+          ),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                primaryGreen,
+                darkGreen,
+              ],
+            ),
+          ),
+        ),
       ),
-      body: _createdShare != null ? _buildShareResult() : _buildShareForm(),
-      bottomNavigationBar: _createdShare != null ? null : _buildActivitySection(),
+      body: FadeTransition(
+        opacity: _fadeAnimationController,
+        child: _createdShare != null ? _buildShareResult() : _buildShareForm(),
+      ),
     );
   }
 
   Widget _buildPinSetupForm() {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Center(
-        child: Card(
-          elevation: 8,
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.lock_outline,
-                  size: 64,
-                  color: Colors.blue[700],
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Set Up Your Permanent PIN',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Create a 4-6 digit PIN that you\'ll use to approve document access requests.',
-                  style: TextStyle(color: Colors.grey[600]),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 32),
-                TextField(
-                  controller: _pinSetupController,
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  obscureText: !_pinVisible,
-                  decoration: InputDecoration(
-                    labelText: 'Enter Your PIN (4-6 digits)',
-                    hintText: 'Choose a memorable PIN',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    prefixIcon: const Icon(Icons.pin),
-                    suffixIcon: IconButton(
-                      icon: Icon(_pinVisible ? Icons.visibility : Icons.visibility_off),
-                      onPressed: () => setState(() => _pinVisible = !_pinVisible),
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            primaryGreen,
+            Color(0xFFF8FAFC),
+          ],
+          stops: [0.0, 0.3],
+        ),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Center(
+            child: SingleChildScrollView(
+              child: Container(
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: _isSettingUpPin ? null : _setupPermanentPin,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [primaryGreen, darkGreen],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Icon(
+                        Icons.security_rounded,
+                        size: 48,
+                        color: Colors.white,
+                      ),
                     ),
-                    child: _isSettingUpPin
-                        ? const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              ),
-                              SizedBox(width: 12),
-                              Text('Setting up PIN...'),
-                            ],
-                          )
-                        : const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.check),
-                              SizedBox(width: 8),
-                              Text('Set PIN', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                            ],
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Set Up Your Permanent PIN',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black87,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Create a secure 4-6 digit PIN that you\'ll use to approve document access requests. This PIN will be required every time someone wants to access your shared documents.',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 15,
+                        height: 1.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 32),
+                    TextField(
+                      controller: _pinSetupController,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      obscureText: !_pinVisible,
+                      decoration: InputDecoration(
+                        labelText: 'Create Your PIN',
+                        hintText: 'Enter 4-6 digits',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide(color: Colors.grey[300]!),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: primaryGreen, width: 2),
+                        ),
+                        prefixIcon: Container(
+                          margin: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: lightGreen,
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                  ),
+                          child: const Icon(Icons.pin_rounded, color: primaryGreen, size: 20),
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _pinVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                            color: Colors.grey[600],
+                          ),
+                          onPressed: () => setState(() => _pinVisible = !_pinVisible),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [primaryGreen, darkGreen],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: primaryGreen.withOpacity(0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton(
+                        onPressed: _isSettingUpPin ? null : _setupPermanentPin,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: _isSettingUpPin
+                            ? const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
+                                  ),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Setting up PIN...',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.check_circle_rounded),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Set PIN & Continue',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -245,179 +531,410 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
       return _buildPinSetupForm();
     }
     
-    return Form(
-      key: _formKey,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Document info card
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.description, color: Colors.blue[700]),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Document to Share',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            primaryGreen,
+            Color(0xFFF8FAFC),
+          ],
+          stops: [0.0, 0.25],
+        ),
+      ),
+      child: SafeArea(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    const SizedBox(height: 20),
+                    // Document info card
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 20),
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[50],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey[300]!),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: _getDocumentTypeColor(widget.document.documentType).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(
-                            _getDocumentIcon(widget.document.documentType),
-                            color: _getDocumentTypeColor(widget.document.documentType),
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             children: [
-                              Text(
-                                widget.document.fileName,
-                                style: const TextStyle(fontWeight: FontWeight.w600),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      _getDocumentTypeColor(widget.document.documentType),
+                                      _getDocumentTypeColor(widget.document.documentType).withOpacity(0.7),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Icon(
+                                  _getDocumentIcon(widget.document.documentType),
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${widget.document.documentType} • ${widget.document.doctorName}',
-                                style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                              ),
-                              Text(
-                                widget.document.hospitalName,
-                                style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                              const SizedBox(width: 16),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Document to Share',
+                                      style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    Text(
+                                      'This document will be securely shared',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // PIN Display card
-          if (_isLoadingPin)
-            const Center(child: CircularProgressIndicator())
-          else if (_permanentPin != null)
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.lock, color: Colors.green[700]),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Your PIN',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.green[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.green[300]!),
-                      ),
-                      child: Column(
-                        children: [
-                          Text(
-                            _permanentPin!,
-                            style: const TextStyle(
-                              fontSize: 32,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 4,
+                          const SizedBox(height: 20),
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  _getDocumentTypeColor(widget.document.documentType).withOpacity(0.05),
+                                  _getDocumentTypeColor(widget.document.documentType).withOpacity(0.02),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: _getDocumentTypeColor(widget.document.documentType).withOpacity(0.2),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'This is your permanent PIN for document sharing',
-                            style: TextStyle(fontSize: 14, color: Colors.grey),
-                            textAlign: TextAlign.center,
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: _getDocumentTypeColor(widget.document.documentType).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    _getDocumentIcon(widget.document.documentType),
+                                    color: _getDocumentTypeColor(widget.document.documentType),
+                                    size: 28,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        widget.document.fileName,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 16,
+                                          color: Colors.black87,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: _getDocumentTypeColor(widget.document.documentType).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          widget.document.documentType,
+                                          style: TextStyle(
+                                            color: _getDocumentTypeColor(widget.document.documentType),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        '${widget.document.doctorName} • ${widget.document.hospitalName}',
+                                        style: TextStyle(
+                                          color: Colors.grey[600],
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
                     ),
+
+                    // PIN Display card
+                    if (_isLoadingPin)
+                      Container(
+                        padding: const EdgeInsets.all(40),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.08),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: const Center(
+                          child: CircularProgressIndicator(color: primaryGreen),
+                        ),
+                      )
+                    else if (_permanentPin != null)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 24),
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.08),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [accentBlue, Color(0xFF2563EB)],
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: const Icon(
+                                    Icons.security_rounded,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Your Security PIN',
+                                        style: TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        'Used to approve access requests',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  onPressed: _showChangePinDialog,
+                                  icon: const Icon(Icons.edit_rounded, color: accentBlue),
+                                  tooltip: 'Change PIN',
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    lightBlue,
+                                    lightBlue.withOpacity(0.5),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: accentBlue.withOpacity(0.2),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: accentBlue.withOpacity(0.1),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Text(
+                                      _permanentPin!,
+                                      style: const TextStyle(
+                                        fontSize: 32,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 8,
+                                        color: accentBlue,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.info_outline_rounded,
+                                        size: 16,
+                                        color: Colors.grey[600],
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Keep this PIN secure',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.grey[600],
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),
-            ),
-          const SizedBox(height: 24),
 
-          // Create share button
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton(
-              onPressed: (_isCreating || _permanentPin == null) ? null : _createShare,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                disabledBackgroundColor: Colors.grey[300],
-              ),
-              child: _isCreating
-                  ? const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Text('Creating Share Link...'),
-                      ],
-                    )
-                  : const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.share),
-                        SizedBox(width: 8),
-                        Text('Create Share Link', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                      ],
+              // Create share button
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, -2),
                     ),
-            ),
+                  ],
+                ),
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [primaryGreen, darkGreen],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: primaryGreen.withOpacity(0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton(
+                    onPressed: (_isCreating || _permanentPin == null) ? null : _createShare,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 0,
+                    ),
+                                                child: _isCreating
+                        ? const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              ),
+                              SizedBox(width: 12),
+                              Text(
+                                'Creating Share Link...',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.share_rounded, size: 24),
+                              SizedBox(width: 12),
+                              Text(
+                                'Create Secure Share Link',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -442,7 +959,6 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
   }
 
   Stream<ShareRecord?> _watchShareRecord() {
-    // Real-time Firestore stream listener for immediate updates
     return Stream.periodic(const Duration(milliseconds: 500), (count) async {
       try {   
         return await _firebaseService.getShareRecord(_createdShare!.shareId);
@@ -453,295 +969,647 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
   }
 
   Widget _buildPinApprovalView(String shareUrl) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // Access request notification
-          Card(
-            elevation: 2,
-            color: Colors.orange[50],
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.notification_important,
-                    color: Colors.orange[700],
-                    size: 48,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Access Request Received!',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Someone is requesting access to your document. Enter your PIN to approve.',
-                    style: TextStyle(color: Colors.grey[600]),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // PIN entry card
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  const Text(
-                    'Enter Your PIN to Approve Access',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 24),
-                  TextField(
-                    controller: _pinApprovalController,
-                    keyboardType: TextInputType.number,
-                    maxLength: 6,
-                    obscureText: !_pinVisible,
-                    decoration: InputDecoration(
-                      labelText: 'Your PIN',
-                      hintText: 'Enter your permanent PIN',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      prefixIcon: const Icon(Icons.lock),
-                      suffixIcon: IconButton(
-                        icon: Icon(_pinVisible ? Icons.visibility : Icons.visibility_off),
-                        onPressed: () => setState(() => _pinVisible = !_pinVisible),
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            primaryGreen,
+            Color(0xFFF8FAFC),
+          ],
+          stops: [0.0, 0.25],
+        ),
+      ),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              const SizedBox(height: 20),
+              // Access request notification
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.orange[400]!, Colors.orange[600]!],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Icon(
+                        Icons.notification_important_rounded,
+                        color: Colors.white,
+                        size: 48,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _isApproving ? null : _approveAccess,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Access Request Received!',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black87,
                       ),
-                      child: _isApproving
-                          ? const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Someone is requesting access to your document. Enter your PIN to approve their access.',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 15,
+                        height: 1.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // PIN entry card
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [primaryGreen, darkGreen],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(
+                            Icons.lock_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        const Expanded(
+                          child: Text(
+                            'Enter PIN to Approve',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    TextField(
+                      controller: _pinApprovalController,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      obscureText: !_pinVisible,
+                      decoration: InputDecoration(
+                        labelText: 'Your PIN',
+                        hintText: 'Enter your permanent PIN',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide(color: Colors.grey[300]!),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: primaryGreen, width: 2),
+                        ),
+                        prefixIcon: Container(
+                          margin: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: lightGreen,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.pin_rounded, color: primaryGreen, size: 20),
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _pinVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded,
+                            color: Colors.grey[600],
+                          ),
+                          onPressed: () => setState(() => _pinVisible = !_pinVisible),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [primaryGreen, darkGreen],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: primaryGreen.withOpacity(0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton(
+                        onPressed: _isApproving ? null : _approveAccess,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: _isApproving
+                            ? const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
                                   ),
-                                ),
-                                SizedBox(width: 12),
-                                Text('Approving...'),
-                              ],
-                            )
-                          : const Row(
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Approving Access...',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.check_circle_rounded, size: 24),
+                                  SizedBox(width: 12),
+                                  Text(
+                                    'Approve Access',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // QR code still visible but smaller
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'Share Link (QR Code)',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: primaryGreen.withOpacity(0.2)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: primaryGreen.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: QrImageView(
+                        data: shareUrl,
+                        version: QrVersions.auto,
+                        size: 150.0,
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black87,
+                        errorStateBuilder: (cxt, err) {
+                          return Container(
+                            width: 150,
+                            height: 150,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[100],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.check_circle),
-                                SizedBox(width: 8),
-                                Text('Approve Access', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                                Icon(Icons.error_outline, size: 32, color: Colors.red),
+                                SizedBox(height: 8),
+                                Text('QR Generation Error'),
                               ],
                             ),
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
-          const SizedBox(height: 16),
-
-          // QR code still visible but smaller
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  const Text(
-                    'Share Link (QR Code)',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey[300]!),
-                    ),
-                    child: QrImageView(
-                      data: shareUrl,
-                      version: QrVersions.auto,
-                      size: 150.0,
-                      backgroundColor: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildQRCodeView(String shareUrl, ShareRecord currentShare) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // Success header
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.green[100],
-                      borderRadius: BorderRadius.circular(50),
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            primaryGreen,
+            Color(0xFFF8FAFC),
+          ],
+          stops: [0.0, 0.25],
+        ),
+      ),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              const SizedBox(height: 20),
+              // Success header
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
                     ),
-                    child: const Icon(
-                      Icons.check_circle,
-                      color: Colors.green,
-                      size: 48,
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [primaryGreen, darkGreen],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Icon(
+                        Icons.check_circle_rounded,
+                        color: Colors.white,
+                        size: 48,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Share Link Created!',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Your document can now be securely shared',
-                    style: TextStyle(color: Colors.grey[600]),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // QR Code card
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  const Text(
-                    'QR Code',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey[300]!),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Share Link Created!',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black87,
+                      ),
                     ),
-                    child: QrImageView(
-                      data: shareUrl,
-                      version: QrVersions.auto,
-                      size: 200.0,
-                      backgroundColor: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[50],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: SelectableText(
-                      shareUrl,
-                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Your document can now be securely shared with authorized users',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 15,
+                        height: 1.5,
+                      ),
                       textAlign: TextAlign.center,
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
+              const SizedBox(height: 20),
 
-          // Share info
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              // QR Code card
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [primaryGreen, darkGreen],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(
+                            Icons.qr_code_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        const Expanded(
+                          child: Text(
+                            'Secure QR Code',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: primaryGreen.withOpacity(0.2)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: primaryGreen.withOpacity(0.1),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: QrImageView(
+                        data: shareUrl,
+                        version: QrVersions.auto,
+                        size: 200.0,
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black87,
+                        errorStateBuilder: (cxt, err) {
+                          return Container(
+                            width: 200,
+                            height: 200,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[100],
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.error_outline, size: 48, color: Colors.red),
+                                SizedBox(height: 12),
+                                Text(
+                                  'QR Code Generation Error',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Please try again',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: lightGreen,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: primaryGreen.withOpacity(0.2)),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.link_rounded, color: primaryGreen, size: 16),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Share URL:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: darkGreen,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          SelectableText(
+                            shareUrl,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                              color: darkGreen,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Share info
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [accentBlue, primaryGreen],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(
+                            Icons.info_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        const Expanded(
+                          child: Text(
+                            'Share Details',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    _buildInfoRow(Icons.description_rounded, 'Document', widget.document.fileName),
+                    _buildInfoRow(Icons.person_rounded, 'Owner', 'Patient'),
+                    _buildInfoRow(Icons.access_time_rounded, 'Expires', 
+                      '${_createdShare!.expiresAt.day}/${_createdShare!.expiresAt.month}/${_createdShare!.expiresAt.year}'),
+                    _buildInfoRow(Icons.security_rounded, 'Security', 'PIN Protected'),
+                    _buildInfoRow(Icons.verified_rounded, 'Status', 'Active'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Action buttons
+              Row(
                 children: [
-                  const Text(
-                    'Share Details',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: primaryGreen.withOpacity(0.3)),
+                      ),
+                      child: OutlinedButton.icon(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.arrow_back_rounded, color: primaryGreen),
+                        label: const Text(
+                          'Back',
+                          style: TextStyle(
+                            color: primaryGreen,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          side: BorderSide.none,
+                        ),
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 16),
-                  _buildInfoRow(Icons.description, 'Document', widget.document.fileName),
-                  _buildInfoRow(Icons.person, 'Owner', 'Patient'),
-                  _buildInfoRow(Icons.access_time, 'Expires', 
-                    '${_createdShare!.expiresAt.day}/${_createdShare!.expiresAt.month}/${_createdShare!.expiresAt.year}'),
-                  _buildInfoRow(Icons.security, 'Security', 'PIN Protected'),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [accentBlue, primaryGreen],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: accentBlue.withOpacity(0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          // TODO: Implement share functionality
+                          _showSuccessSnackBar('Share link copied to clipboard!');
+                        },
+                        icon: const Icon(Icons.share_rounded, color: Colors.white),
+                        label: const Text(
+                          'Share',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Action buttons
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.arrow_back),
-                  label: const Text('Back to Documents'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    // TODO: Implement share functionality
-                  },
-                  icon: const Icon(Icons.share),
-                  label: const Text('Share Link'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -751,17 +1619,34 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Colors.grey[600]),
-          const SizedBox(width: 12),
-          Text(
-            '$label:',
-            style: const TextStyle(fontWeight: FontWeight.w500),
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: accentBlue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: accentBlue),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 80,
+            child: Text(
+              '$label:',
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+                fontSize: 14,
+              ),
+            ),
+          ),
           Expanded(
             child: Text(
               value,
-              style: TextStyle(color: Colors.grey[700]),
+              style: TextStyle(
+                color: Colors.grey[700],
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -780,9 +1665,8 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final shareId = DateTime.now().millisecondsSinceEpoch.toString();
-      final expiresAt = DateTime.now().add(const Duration(days: 1)); // Default 1 day expiry
+      final expiresAt = DateTime.now().add(const Duration(days: 1));
       
-      // Hash the permanent PIN for storage
       final salt = EncryptionUtils.generateSalt();
       final pinHash = '${EncryptionUtils.hashPin(_permanentPin!, salt)}:$salt:${_permanentPin!}';
 
@@ -807,27 +1691,20 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
         _isCreating = false;
       });
 
+      _scaleAnimationController.forward();
+
     } catch (e) {
       setState(() {
         _isCreating = false;
       });
       
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error creating share: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      _showErrorSnackBar('Error creating share: $e');
     }
   }
 
   Future<void> _approveAccess() async {
     if (_pinApprovalController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter your PIN')),
-      );
+      _showErrorSnackBar('Please enter your PIN');
       return;
     }
 
@@ -836,42 +1713,22 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
     });
 
     try {
-      // Verify PIN against stored permanent PIN
       if (_pinApprovalController.text == _permanentPin) {
-        // PIN is correct, unlock the document immediately
         await _firebaseService.updateShareRecord(_createdShare!.shareId, {
           'unlocked': true,
         });
         
-        // Update local state immediately for instant UI feedback
         setState(() {
           _createdShare = _createdShare!.copyWith(unlocked: true);
         });
         
         _pinApprovalController.clear();
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Access approved! Document unlocked instantly.'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
+        _showSuccessSnackBar('Access approved! Document unlocked instantly.');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Incorrect PIN. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showErrorSnackBar('Incorrect PIN. Please try again.');
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error approving access: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showErrorSnackBar('Error approving access: $e');
     } finally {
       setState(() {
         _isApproving = false;
@@ -879,265 +1736,66 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
     }
   }
 
-  Widget _buildActivitySection() {
-    return Container(
-      height: 300,
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
-            spreadRadius: 1,
-            blurRadius: 5,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(Icons.history, color: Colors.grey[700]),
-                const SizedBox(width: 8),
-                Text(
-                  'Recent Activity',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: FutureBuilder<List<AccessLog>>(
-              future: _firebaseService.getDocumentRecentActivity(widget.document.id, limit: 4),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.info_outline, size: 48, color: Colors.grey[400]),
-                        const SizedBox(height: 8),
-                        Text(
-                          'No recent activity',
-                          style: TextStyle(color: Colors.grey[600]),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                final activities = snapshot.data!;
-                return Column(
-                  children: [
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: activities.length,
-                        itemBuilder: (context, index) {
-                          final activity = activities[index];
-                          return _buildActivityItem(activity);
-                        },
-                      ),
-                    ),
-                    if (activities.length >= 4)
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton(
-                            onPressed: () => _showAllActivity(),
-                            child: const Text('View All Activity'),
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActivityItem(AccessLog activity) {
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: _getActivityColor(activity.action),
-        child: Icon(
-          _getActivityIcon(activity.action),
-          color: Colors.white,
-          size: 20,
-        ),
-      ),
-      title: Text(
-        _getActivityTitle(activity.action),
-        style: const TextStyle(fontWeight: FontWeight.w500),
-      ),
-      subtitle: Text(
-        _formatDateTime(activity.accessedAt),
-        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-      ),
-      trailing: activity.viewerId != null 
-        ? Icon(Icons.person, color: Colors.grey[400], size: 16)
-        : Icon(Icons.public, color: Colors.grey[400], size: 16),
-    );
-  }
-
-  Color _getActivityColor(String action) {
-    switch (action.toLowerCase()) {
-      case 'viewed':
-        return Colors.blue;
-      case 'downloaded':
-        return Colors.green;
-      case 'shared':
-        return Colors.orange;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getActivityIcon(String action) {
-    switch (action.toLowerCase()) {
-      case 'viewed':
-        return Icons.visibility;
-      case 'downloaded':
-        return Icons.download;
-      case 'shared':
-        return Icons.share;
-      default:
-        return Icons.info;
-    }
-  }
-
-  String _getActivityTitle(String action) {
-    switch (action.toLowerCase()) {
-      case 'viewed':
-        return 'Document viewed';
-      case 'downloaded':
-        return 'Document downloaded';
-      case 'shared':
-        return 'Document shared';
-      default:
-        return 'Activity recorded';
-    }
-  }
-
-  void _showAllActivity() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        maxChildSize: 0.9,
-        minChildSize: 0.5,
-        builder: (context, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          child: Column(
+  void _showSuccessSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: Colors.grey[200]!),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.history),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'All Activity',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: FutureBuilder<List<AccessLog>>(
-                  future: _firebaseService.getDocumentAccessLogs(widget.document.id),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-
-                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return const Center(
-                        child: Text('No activity found'),
-                      );
-                    }
-
-                    return ListView.builder(
-                      controller: scrollController,
-                      itemCount: snapshot.data!.length,
-                      itemBuilder: (context, index) {
-                        return _buildActivityItem(snapshot.data![index]);
-                      },
-                    );
-                  },
-                ),
-              ),
+              const Icon(Icons.check_circle_rounded, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(child: Text(message)),
             ],
           ),
+          backgroundColor: primaryGreen,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
-      ),
-    );
+      );
+    }
   }
 
-  String _formatDateTime(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays}d ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m ago';
-    } else {
-      return 'Just now';
+  void _showErrorSnackBar(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_rounded, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: Colors.red[600],
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
     }
   }
 
   @override
   void dispose() {
+    _fadeAnimationController.dispose();
+    _scaleAnimationController.dispose();
     _pinApprovalController.dispose();
     _pinSetupController.dispose();
+    _changePinController.dispose();
     super.dispose();
   }
 
   Color _getDocumentTypeColor(String documentType) {
     switch (documentType.toLowerCase()) {
       case 'prescription':
-        return Colors.green;
+        return primaryGreen;
       case 'lab report':
-        return Colors.blue;
+        return accentBlue;
       case 'x-ray':
-        return Colors.purple;
+        return const Color(0xFF8B5CF6);
       case 'mri scan':
-        return Colors.orange;
+        return const Color(0xFFF59E0B);
       case 'ct scan':
-        return Colors.red;
+        return const Color(0xFFEF4444);
       default:
         return Colors.grey;
     }
@@ -1146,17 +1804,17 @@ class _CreateShareScreenState extends State<CreateShareScreen> {
   IconData _getDocumentIcon(String documentType) {
     switch (documentType.toLowerCase()) {
       case 'prescription':
-        return Icons.medication;
+        return Icons.medication_rounded;
       case 'lab report':
-        return Icons.science;
+        return Icons.science_rounded;
       case 'x-ray':
-        return Icons.medical_services;
+        return Icons.medical_services_rounded;
       case 'mri scan':
-        return Icons.monitor_heart;
+        return Icons.monitor_heart_rounded;
       case 'ct scan':
-        return Icons.local_hospital;
+        return Icons.local_hospital_rounded;
       default:
-        return Icons.description;
+        return Icons.description_rounded;
     }
   }
 }

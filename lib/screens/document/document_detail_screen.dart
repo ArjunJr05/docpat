@@ -9,7 +9,10 @@ import '../../models/health_document.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firebase_service.dart';
 import '../../services/ipfs_service.dart';
+import '../../services/blockchain_service.dart';
 import '../share/create_share_screen.dart';
+import 'image_viewer_screen.dart';
+import 'pdf_viewer_screen.dart';
 
 class DocumentDetailScreen extends StatefulWidget {
   final HealthDocument document;
@@ -58,13 +61,14 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: Text(
           widget.document.fileName,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        backgroundColor: Colors.blue,
+        backgroundColor: Color(0xFF10B981),
         foregroundColor: Colors.white,
         actions: [
           PopupMenuButton(
@@ -74,7 +78,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
                 value: 'share',
                 child: Row(
                   children: [
-                    Icon(Icons.share),
+                    Icon(Icons.share,color:Color(0xFF10B981),),
                     SizedBox(width: 8),
                     Text('Share Document'),
                   ],
@@ -84,7 +88,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
                 value: 'download',
                 child: Row(
                   children: [
-                    Icon(Icons.download),
+                    Icon(Icons.download,color: Color(0xFF10B981),),
                     SizedBox(width: 8),
                     Text('Download File'),
                   ],
@@ -138,7 +142,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _shareDocument,
-        backgroundColor: Colors.blue,
+        backgroundColor: Color(0xFF10B981),
         foregroundColor: Colors.white,
         child: const Icon(Icons.share),
       ),
@@ -156,6 +160,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
             elevation: 2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Container(
+              color: Colors.white,
               width: double.infinity,
               height: 250,
               padding: const EdgeInsets.all(16),
@@ -163,7 +168,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.preview, color: Colors.blue[700]),
+                      Icon(Icons.preview, color: Color(0xFF10B981)),
                       const SizedBox(width: 8),
                       const Text(
                         'Document Preview',
@@ -183,6 +188,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
 
           // Document information card
           Card(
+            color: Colors.white,
             elevation: 2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Padding(
@@ -192,7 +198,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.description, color: Colors.blue[700]),
+                      Icon(Icons.description, color: Color(0xFF10B981)),
                       const SizedBox(width: 8),
                       const Text(
                         'Document Information',
@@ -219,6 +225,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
 
           // Technical details card
           Card(
+            color: Colors.white,
             elevation: 2,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Padding(
@@ -280,25 +287,44 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: Colors.orange[300]!),
                       ),
-                      child: Row(
+                      child: Column(
                         children: [
-                          Icon(Icons.pending, color: Colors.orange[700]),
-                          const SizedBox(width: 8),
-                          const Expanded(
-                            child: Text(
-                              'Blockchain verification pending or failed',
-                              style: TextStyle(fontWeight: FontWeight.w500),
+                          Row(
+                            children: [
+                              Icon(Icons.pending, color: Colors.orange[700]),
+                              const SizedBox(width: 8),
+                              const Expanded(
+                                child: Text(
+                                  'Blockchain verification pending or failed',
+                                  style: TextStyle(fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _retryBlockchainVerification,
+                              icon: const Icon(Icons.refresh, size: 16),
+                              label: const Text('Retry Verification'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                textStyle: const TextStyle(fontSize: 12),
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    _buildInfoSection([
+                      _buildInfoRow('IPFS CID', widget.document.ipfsCid, copyable: true, monospace: true),
+                      _buildInfoRow('File Type', widget.document.fileType.toUpperCase()),
+                    ]),
                   ],
-                  const SizedBox(height: 16),
-                  _buildInfoSection([
-                    _buildInfoRow('IPFS CID', widget.document.ipfsCid, copyable: true, monospace: true),
-                    _buildInfoRow('File Type', widget.document.fileType.toUpperCase()),
-                  ]),
                 ],
               ),
             ),
@@ -318,13 +344,14 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
           children: [
             // Create share button
             Card(
+              color: Colors.white,
               elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
-                    Icon(Icons.share, size: 48, color: Colors.blue[700]),
+                    Icon(Icons.share, size: 48, color: Color(0xFF10B981)),
                     const SizedBox(height: 16),
                     const Text(
                       'Share This Document',
@@ -344,7 +371,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
                         icon: const Icon(Icons.add_link),
                         label: const Text('Create New Share Link'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
+                          backgroundColor: Color(0xFF10B981),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.all(16),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -359,6 +386,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
 
             // Active shares list
             Card(
+              color: Colors.white,
               elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
@@ -450,6 +478,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
         child: Column(
           children: [
             Card(
+              color: Colors.white,
               elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: Padding(
@@ -459,7 +488,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.history, color: Colors.blue[700]),
+                        Icon(Icons.history, color: Color(0xFF10B981)),
                         const SizedBox(width: 8),
                         const Text(
                           'Access History',
@@ -518,58 +547,107 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
 
   Widget _buildFilePreview() {
     if (widget.document.fileType == 'image') {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: CachedNetworkImage(
-          imageUrl: _ipfsService.getFileUrl(widget.document.ipfsCid),
-          fit: BoxFit.contain,
-          placeholder: (context, url) => Container(
-            color: Colors.grey[200],
-            child: const Center(
-              child: CircularProgressIndicator(),
+      return GestureDetector(
+        onTap: () => _openImageViewer(),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: CachedNetworkImage(
+            imageUrl: _ipfsService.getFileUrl(widget.document.ipfsCid),
+            fit: BoxFit.contain,
+            placeholder: (context, url) => Container(
+              color: Colors.white,
+              child: const Center(
+                child: CircularProgressIndicator(),
+              ),
             ),
-          ),
-          errorWidget: (context, url, error) => Container(
-            color: Colors.grey[200],
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error, size: 48, color: Colors.red[400]),
-                const SizedBox(height: 8),
-                const Text('Failed to load image'),
-                TextButton(
-                  onPressed: () => setState(() {}), // Retry
-                  child: const Text('Retry'),
-                ),
-              ],
+            errorWidget: (context, url, error) => Container(
+              color: Colors.white,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error, size: 48, color: Colors.red[400]),
+                  const SizedBox(height: 8),
+                  const Text('Failed to load image'),
+                  TextButton(
+                    onPressed: () => setState(() {}), // Retry
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       );
     } else {
-      return Container(
-        decoration: BoxDecoration(
-          color: Colors.grey[100],
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.picture_as_pdf, size: 64, color: Colors.red[600]),
-            const SizedBox(height: 12),
-            const Text(
-              'PDF Document',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Tap download to view the full document',
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
-            ),
-          ],
+      return GestureDetector(
+        onTap: () => _openPdfViewer(),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey[300]!),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.picture_as_pdf, size: 64, color: Colors.red[600]),
+              const SizedBox(height: 12),
+              const Text(
+                'PDF Document',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Tap to view the full document',
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Text(
+                  'View PDF',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
+  }
+
+  // Open full-screen image viewer
+  void _openImageViewer() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ImageViewerScreen(
+          imageUrl: _ipfsService.getFileUrl(widget.document.ipfsCid),
+          title: widget.document.fileName,
+        ),
+      ),
+    );
+  }
+
+  // Open PDF viewer
+  void _openPdfViewer() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PdfViewerScreen(
+          pdfUrl: _ipfsService.getFileUrl(widget.document.ipfsCid),
+          title: widget.document.fileName,
+        ),
+      ),
+    );
   }
 
   Widget _buildInfoSection(List<Widget> children) {
@@ -602,7 +680,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
               child: Text(
                 value,
                 style: TextStyle(
-                  color: copyable ? Colors.blue : Colors.black87,
+                  color: copyable ? Color(0xFF10B981) : Colors.black87,
                   decoration: copyable ? TextDecoration.underline : null,
                   fontFamily: monospace ? 'monospace' : null,
                   fontSize: monospace ? 11 : 14,
@@ -734,7 +812,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
         ),
         child: Icon(
           log.action == 'downloaded' ? Icons.download : Icons.visibility,
-          color: log.action == 'downloaded' ? Colors.green[700] : Colors.blue[700],
+          color: log.action == 'downloaded' ? Colors.green[700] : Color(0xFF10B981),
           size: 20,
         ),
       ),
@@ -745,6 +823,11 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (log.viewerName != null && log.viewerName!.isNotEmpty)
+            Text(
+              'Viewed by: ${log.viewerName}',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
           Text(
             'Time: ${_formatDateTime(log.accessedAt)}',
             style: const TextStyle(fontSize: 12),
@@ -752,7 +835,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
           if (log.viewerIp != null)
             Text(
               'IP: ${log.viewerIp}',
-              style: const TextStyle(fontSize: 12),
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
         ],
       ),
@@ -986,6 +1069,87 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> with Single
 
   String _formatDateTime(DateTime date) {
     return DateFormat('dd/MM/yyyy HH:mm').format(date);
+  }
+
+  Future<void> _retryBlockchainVerification() async {
+    try {
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Retrying blockchain verification...'),
+            ],
+          ),
+        ),
+      );
+
+      // Import blockchain service
+      final BlockchainService blockchainService = BlockchainService();
+      await blockchainService.initialize();
+
+      // Generate a new record ID (you might want to use a different strategy)
+      final recordId = DateTime.now().millisecondsSinceEpoch;
+      
+      // Retry storing the document on blockchain
+      final transactionHash = await blockchainService.storeDocument(
+        recordId,
+        widget.document.ipfsCid,
+        widget.document.metadataHash,
+      );
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      if (transactionHash != null) {
+        // Update the document with blockchain info
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        await _firebaseService.updateDocument(
+          authProvider.userId!,
+          widget.document.id,
+          {
+            'blockchainRecordId': recordId,
+            'transactionHash': transactionHash,
+          },
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Blockchain verification successful!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          // Refresh the page to show updated status
+          setState(() {});
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Blockchain verification failed. Please try again later.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Close loading dialog if still open
+      if (mounted) Navigator.of(context).pop();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error during verification: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override

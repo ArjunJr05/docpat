@@ -173,6 +173,7 @@ class AccessLog {
   final String shareId;
   final String documentId;
   final String? viewerId;
+  final String? viewerName; // Name of the person who viewed the document
   final String? viewerIp;
   final DateTime accessedAt;
   final String action; // 'viewed', 'downloaded'
@@ -182,6 +183,7 @@ class AccessLog {
     required this.shareId,
     required this.documentId,
     this.viewerId,
+    this.viewerName,
     this.viewerIp,
     required this.accessedAt,
     required this.action,
@@ -194,6 +196,7 @@ class AccessLog {
       shareId: data['shareId'],
       documentId: data['documentId'],
       viewerId: data['viewerId'],
+      viewerName: data['viewerName'],
       viewerIp: data['viewerIp'],
       accessedAt: (data['accessedAt'] as Timestamp).toDate(),
       action: data['action'] ?? 'viewed',
@@ -205,6 +208,7 @@ class AccessLog {
       'shareId': shareId,
       'documentId': documentId,
       'viewerId': viewerId,
+      'viewerName': viewerName,
       'viewerIp': viewerIp,
       'accessedAt': Timestamp.fromDate(accessedAt),
       'action': action,

@@ -10,6 +10,7 @@ import '../../services/firebase_service.dart';
 import '../document/document_detail_screen.dart';
 import '../share/share_view_screen.dart';
 import '../share/pending_requests_screen.dart';
+import '../share/sender_notifications_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -29,9 +30,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _fabAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 300),
       vsync: this,
     );
+    // Start with FAB visible if we're on documents tab
+    if (_currentIndex == 0) {
+      _fabAnimationController.forward();
+    }
+    
     // Defer loading documents to avoid calling notifyListeners during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -72,7 +78,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       appBar: _currentIndex == 0 ? _buildHomeAppBar() : null,
+      
       body: IndexedStack(
         index: _currentIndex,
         children: [
@@ -81,16 +89,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ],
       ),
       bottomNavigationBar: _buildBottomNavigationBar(),
-      floatingActionButton: _currentIndex == 0 ? _buildFloatingActionButton() : null,
+      floatingActionButton: _buildFloatingActionButton(),
     );
   }
 
   PreferredSizeWidget _buildHomeAppBar() {
     return AppBar(
-      title: const Text('Health Documents'),
-      backgroundColor: Colors.blue,
+      title: const Text('Health Documents', style: TextStyle(color: Colors.white)),
+      backgroundColor: const Color(0xFF10B981),
       foregroundColor: Colors.white,
-      elevation: 0,
+      elevation: 2,
+      iconTheme: const IconThemeData(color: Colors.white),
       actions: [
         Consumer<DocumentProvider>(
           builder: (context, provider, child) {
@@ -98,17 +107,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               onSelected: (value) {
                 provider.setSortBy(value);
               },
-              icon: const Icon(Icons.sort),
+              icon: const Icon(Icons.sort, color: Colors.white),
               tooltip: 'Sort documents',
+              color: Colors.white,
               itemBuilder: (context) => [
                 PopupMenuItem(
                   value: 'date_desc',
                   child: Row(
                     children: [
                       Icon(Icons.access_time, 
-                           color: provider.sortBy == 'date_desc' ? Colors.blue : Colors.grey),
+                           color: provider.sortBy == 'date_desc' ? const Color(0xFF10B981) : Colors.grey),
                       const SizedBox(width: 8),
-                      const Text('Date (Newest First)'),
+                      Text('Date (Newest First)', 
+                           style: TextStyle(color: provider.sortBy == 'date_desc' ? const Color(0xFF10B981) : Colors.black87)),
                     ],
                   ),
                 ),
@@ -117,9 +128,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   child: Row(
                     children: [
                       Icon(Icons.history, 
-                           color: provider.sortBy == 'date_asc' ? Colors.blue : Colors.grey),
+                           color: provider.sortBy == 'date_asc' ? const Color(0xFF10B981) : Colors.grey),
                       const SizedBox(width: 8),
-                      const Text('Date (Oldest First)'),
+                      Text('Date (Oldest First)', 
+                           style: TextStyle(color: provider.sortBy == 'date_asc' ? const Color(0xFF10B981) : Colors.black87)),
                     ],
                   ),
                 ),
@@ -128,9 +140,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   child: Row(
                     children: [
                       Icon(Icons.sort_by_alpha, 
-                           color: provider.sortBy == 'name_asc' ? Colors.blue : Colors.grey),
+                           color: provider.sortBy == 'name_asc' ? const Color(0xFF10B981) : Colors.grey),
                       const SizedBox(width: 8),
-                      const Text('Name (A-Z)'),
+                      Text('Name (A-Z)', 
+                           style: TextStyle(color: provider.sortBy == 'name_asc' ? const Color(0xFF10B981) : Colors.black87)),
                     ],
                   ),
                 ),
@@ -139,9 +152,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   child: Row(
                     children: [
                       Icon(Icons.sort_by_alpha, 
-                           color: provider.sortBy == 'name_desc' ? Colors.blue : Colors.grey),
+                           color: provider.sortBy == 'name_desc' ? const Color(0xFF10B981) : Colors.grey),
                       const SizedBox(width: 8),
-                      const Text('Name (Z-A)'),
+                      Text('Name (Z-A)', 
+                           style: TextStyle(color: provider.sortBy == 'name_desc' ? const Color(0xFF10B981) : Colors.black87)),
                     ],
                   ),
                 ),
@@ -157,8 +171,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             );
           },
-          icon: const Icon(Icons.qr_code_scanner),
+          icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
           tooltip: 'Scan Shared Document',
+        ),
+        IconButton(
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const SenderNotificationsScreen(),
+              ),
+            );
+          },
+          icon: const Icon(Icons.share, color: Colors.white),
+          tooltip: 'My Shared Documents',
         ),
         Stack(
           children: [
@@ -170,7 +195,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                 ).then((_) => _loadPendingRequestsCount());
               },
-              icon: const Icon(Icons.notifications),
+              icon: const Icon(Icons.notifications, color: Colors.white),
               tooltip: 'Pending Requests',
             ),
             if (_pendingRequestsCount > 0)
@@ -200,13 +225,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
           ],
         ),
-        IconButton(
-          onPressed: () {
-            _showInfoDialog();
-          },
-          icon: const Icon(Icons.info_outline),
-          tooltip: 'App Information',
-        ),
         const SizedBox(width: 8),
       ],
     );
@@ -215,9 +233,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget _buildBottomNavigationBar() {
     return Container(
       decoration: BoxDecoration(
+        color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
+            color: Colors.grey.withOpacity(0.3),
             spreadRadius: 1,
             blurRadius: 5,
             offset: const Offset(0, -2),
@@ -239,7 +258,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         },
         type: BottomNavigationBarType.fixed,
         backgroundColor: Colors.white,
-        selectedItemColor: Colors.blue,
+        selectedItemColor: const Color(0xFF10B981),
         unselectedItemColor: Colors.grey[600],
         selectedFontSize: 12,
         unselectedFontSize: 12,
@@ -260,21 +279,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildFloatingActionButton() {
-    return ScaleTransition(
-      scale: Tween<double>(begin: 0.0, end: 1.0).animate(
-        CurvedAnimation(parent: _fabAnimationController, curve: Curves.elasticOut),
-      ),
-      child: FloatingActionButton(
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (context) => const UploadScreen()),
-          ).then((_) => _loadDocuments());
-        },
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
-        tooltip: 'Upload Document',
-        child: const Icon(Icons.add),
-      ),
+    return AnimatedBuilder(
+      animation: _fabAnimationController,
+      builder: (context, child) {
+        return Visibility(
+          visible: _currentIndex == 0,
+          child: Transform.scale(
+            scale: _fabAnimationController.value,
+            child: Opacity(
+              opacity: _fabAnimationController.value,
+              child: FloatingActionButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) => const UploadScreen()),
+                  ).then((_) => _loadDocuments());
+                },
+                backgroundColor: const Color(0xFF10B981),
+                foregroundColor: Colors.white,
+                tooltip: 'Upload Document',
+                child: const Icon(Icons.add),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -295,7 +323,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   prefixIcon: const Icon(Icons.search, color: Colors.grey),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
-                          icon: const Icon(Icons.clear),
+                          icon: const Icon(Icons.clear, color: Colors.grey),
                           onPressed: () {
                             _searchController.clear();
                             Provider.of<DocumentProvider>(context, listen: false)
@@ -344,7 +372,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                               ),
                             ),
                             selected: isSelected,
-                            selectedColor: Colors.blue,
+                            selectedColor: const Color(0xFF10B981),
                             backgroundColor: Colors.white,
                             checkmarkColor: Colors.white,
                             onSelected: (selected) {
@@ -370,7 +398,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      CircularProgressIndicator(),
+                      CircularProgressIndicator(color: Color(0xFF10B981)),
                       SizedBox(height: 16),
                       Text('Loading documents...'),
                     ],
@@ -386,7 +414,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
               return RefreshIndicator(
                 onRefresh: () async => _loadDocuments(),
-                color: Colors.blue,
+                color: const Color(0xFF10B981),
                 child: ListView.builder(
                   padding: const EdgeInsets.only(bottom: 80), // Space for FAB
                   itemCount: documents.length,
@@ -415,13 +443,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 color: Colors.grey[100],
                 borderRadius: BorderRadius.circular(50),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.folder_open,
                 size: 64,
-                color: Colors.grey,
+                color: Colors.grey[400],
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 10),
             const Text(
               'No documents found',
               style: TextStyle(
@@ -435,8 +463,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               builder: (context, provider, child) {
                 return Text(
                   (provider.searchQuery.isNotEmpty || provider.selectedType != 'All')
-                      ? 'Try adjusting your filters or search terms'
-                      : 'Tap the + button to upload your first document',
+                      ? ''
+                      : '',
                   style: const TextStyle(color: Colors.grey),
                   textAlign: TextAlign.center,
                 );
@@ -452,6 +480,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       provider.setSearchQuery('');
                       provider.setTypeFilter('All');
                     },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF10B981),
+                      foregroundColor: Colors.white,
+                    ),
                     icon: const Icon(Icons.clear_all),
                     label: const Text('Clear Filters'),
                   );
@@ -467,6 +499,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildDocumentCard(HealthDocument document) {
     return Card(
+      color: Colors.white,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -584,9 +617,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Color _getTypeColor(String type) {
     switch (type) {
       case 'Prescription':
-        return Colors.blue;
+        return const Color(0xFF10B981);
       case 'Lab Report':
-        return Colors.green;
+        return Colors.blue;
       case 'Discharge Summary':
         return Colors.orange;
       default:
@@ -619,7 +652,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Health Record Wallet'),
+        title: const Text('Health Record Wallet', style: TextStyle(color: Color(0xFF10B981))),
         content: const Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -636,7 +669,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            child: const Text('Close', style: TextStyle(color: Color(0xFF10B981))),
           ),
         ],
       ),

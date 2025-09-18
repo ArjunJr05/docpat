@@ -222,4 +222,37 @@ class FirebaseService {
         .map((doc) => ShareRecord.fromFirestore(doc))
         .toList();
   }
+
+  // Additional methods for pending_requests_screen compatibility
+  Future<HealthDocument?> getDocumentById(String documentId) async {
+    // Search across all users for the document
+    final usersSnapshot = await _firestore.collection('users').get();
+    
+    for (var userDoc in usersSnapshot.docs) {
+      final docSnapshot = await _firestore
+          .collection('users')
+          .doc(userDoc.id)
+          .collection('documents')
+          .doc(documentId)
+          .get();
+      
+      if (docSnapshot.exists) {
+        return HealthDocument.fromFirestore(docSnapshot);
+      }
+    }
+    return null;
+  }
+
+  Future<void> logDocumentAccess(String documentId, String viewerId, String viewerName, {String shareId = '', String action = 'viewed'}) async {
+    final accessLog = AccessLog(
+      id: '',
+      shareId: shareId,
+      documentId: documentId,
+      viewerId: viewerId,
+      viewerName: viewerName,
+      accessedAt: DateTime.now(),
+      action: action,
+    );
+    await logAccess(accessLog);
+  }
 }

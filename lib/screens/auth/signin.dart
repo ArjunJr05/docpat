@@ -202,13 +202,13 @@ class _SignInPageState extends State<SignInPage> {
                   // Social Sign In Buttons
                   Row(
                     children: [
-                      // Expanded(
-                      //   child: _buildSocialButton(
-                      //     icon: Icons.g_mobiledata,
-                      //     label: 'Google',
-                      //     onPressed: _signInWithGoogle,
-                      //   ),
-                      // ),
+                      Expanded(
+                        child: _buildSocialButton(
+                          icon: Icons.g_mobiledata,
+                          label: 'Google',
+                          onPressed: (){},
+                        ),
+                      ),
                       SizedBox(width: 16),
                       Expanded(
                         child: _buildSocialButton(
@@ -736,13 +736,13 @@ class _SignUpPageState extends State<SignUpPage> {
                   // Social Sign Up Buttons
                   Row(
                     children: [
-                      // Expanded(
-                      //   child: _buildSocialButton(
-                      //     icon: Icons.g_mobiledata,
-                      //     label: 'Google',
-                      //     onPressed: _signUpWithGoogle,
-                      //   ),
-                      // ),
+                      Expanded(
+                        child: _buildSocialButton(
+                          icon: Icons.g_mobiledata,
+                          label: 'Google',
+                          onPressed:() {},
+                        ),
+                      ),
                       SizedBox(width: 16),
                       Expanded(
                         child: _buildSocialButton(

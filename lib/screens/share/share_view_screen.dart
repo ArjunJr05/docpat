@@ -5,6 +5,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../models/health_document.dart';
 import '../../services/firebase_service.dart';
 import '../../services/ipfs_service.dart';
+import '../document/image_viewer_screen.dart';
+import '../document/pdf_viewer_screen.dart';
 
 class ShareViewScreen extends StatefulWidget {
   final String? shareId;
@@ -26,6 +28,12 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
   bool _isScanning = false;
   MobileScannerController? _scannerController;
 
+  // Theme colors
+  static const Color primaryGreen = Color(0xFF10B981);
+  static const Color lightGreen = Color(0xFFECFDF5);
+  static const Color darkGreen = Color(0xFF047857);
+  static const Color greyText = Color(0xFF6B7280);
+
   @override
   void initState() {
     super.initState();
@@ -37,14 +45,31 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text('View Shared Document'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: const Text(
+          'View Shared Document',
+          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
+        ),
+        iconTheme: const IconThemeData(color: Colors.black87),
         actions: [
           if (!_isScanning)
-            IconButton(
-              onPressed: _startQRScan,
-              icon: const Icon(Icons.qr_code_scanner),
-              tooltip: 'Scan QR Code',
+            Container(
+              margin: const EdgeInsets.only(right: 16),
+              child: IconButton(
+                onPressed: _startQRScan,
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: lightGreen,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.qr_code_scanner, color: primaryGreen),
+                ),
+                tooltip: 'Scan QR Code',
+              ),
             ),
         ],
       ),
@@ -58,7 +83,11 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     }
 
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(primaryGreen),
+        ),
+      );
     }
 
     if (_shareRecord == null) {
@@ -77,41 +106,110 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
   }
 
   Widget _buildInitialState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.qr_code_scanner, size: 64, color: Colors.grey),
-          const SizedBox(height: 16),
-          const Text(
-            'Scan QR Code or Enter Share Link',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+  return SingleChildScrollView(
+    padding: const EdgeInsets.all(24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisAlignment: MainAxisAlignment.start, // 👈 top aligned
+      children: [
+        const SizedBox(height: 36), // spacing from app bar
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: lightGreen,
+            borderRadius: BorderRadius.circular(20),
           ),
-          const SizedBox(height: 24),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: TextField(
-              decoration: const InputDecoration(
-                hintText: 'Or paste share link here',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.link),
+          child: const Icon(
+            Icons.qr_code_scanner,
+            size: 64,
+            color: primaryGreen,
+          ),
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'Scan QR Code or Enter Share Link',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Access shared medical documents securely',
+          style: TextStyle(
+            fontSize: 16,
+            color: greyText,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 32),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
-              onSubmitted: _handleShareLink,
-            ),
+            ],
           ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: _startQRScan,
-            icon: const Icon(Icons.qr_code_scanner),
-            label: const Text('Scan QR Code'),
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-            ),
+          child: Column(
+            children: [
+              TextField(
+                decoration: InputDecoration(
+                  hintText: 'Paste share link here',
+                  hintStyle: const TextStyle(color: greyText),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: primaryGreen, width: 2),
+                  ),
+                  prefixIcon: const Icon(Icons.link, color: primaryGreen),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                ),
+                onSubmitted: _handleShareLink,
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _startQRScan,
+                  icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+                  label: const Text(
+                    'Scan QR Code',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryGreen,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
+        ),
+        const SizedBox(height: 24), // breathing space at bottom
+      ],
+    ),
+  );
+}
 
   Widget _buildQRScanner() {
     return Column(
@@ -132,15 +230,14 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
                   }
                 },
               ),
-              // Overlay with scanning area
               Container(
                 decoration: ShapeDecoration(
                   shape: QrScannerOverlayShape(
-                    borderColor: Colors.blue,
-                    borderRadius: 10,
+                    borderColor: primaryGreen,
+                    borderRadius: 16,
                     borderLength: 30,
-                    borderWidth: 10,
-                    cutOutSize: 250,
+                    borderWidth: 4,
+                    cutOutSize: 280,
                   ),
                 ),
               ),
@@ -150,33 +247,66 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         Expanded(
           flex: 1,
           child: Container(
-            padding: const EdgeInsets.all(16),
+            color: Colors.white,
+            padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Text(
                   'Position the QR code within the frame',
-                  style: TextStyle(fontSize: 16),
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: greyText,
+                    fontWeight: FontWeight.w500,
+                  ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    ElevatedButton.icon(
-                      onPressed: () => _scannerController?.toggleTorch(),
-                      icon: const Icon(Icons.flash_on),
-                      label: const Text('Flash'),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _scannerController?.toggleTorch(),
+                        icon: const Icon(Icons.flash_on, color: primaryGreen),
+                        label: const Text(
+                          'Flash',
+                          style: TextStyle(color: primaryGreen, fontWeight: FontWeight.w600),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: primaryGreen),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
                     ),
-                    ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          _isScanning = false;
-                        });
-                        _scannerController?.dispose();
-                        _scannerController = null;
-                      },
-                      child: const Text('Cancel'),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _isScanning = false;
+                          });
+                          _scannerController?.dispose();
+                          _scannerController = null;
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.grey[600],
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -189,7 +319,6 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
   }
 
   Stream<ShareRecord?> _watchShareRecord() {
-    // Real-time monitoring for document unlock status
     return Stream.periodic(const Duration(milliseconds: 500), (count) async {
       try {
         return await _firebaseService.getShareRecord(_shareRecord!.shareId);
@@ -206,7 +335,6 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         if (snapshot.hasData && snapshot.data != null) {
           final shareRecord = snapshot.data!;
           
-          // If document is now unlocked, immediately load it
           if (shareRecord.unlocked && !_shareRecord!.unlocked) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               setState(() {
@@ -220,96 +348,143 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         return Padding(
           padding: const EdgeInsets.all(24),
           child: Center(
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.hourglass_empty, size: 64, color: Colors.orange),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Waiting for Patient Approval',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            child: Container(
+              padding: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.amber[50],
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'The document owner needs to approve your access request. Please wait...',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey),
+                    child: const Icon(
+                      Icons.hourglass_empty,
+                      size: 64,
+                      color: Colors.amber,
                     ),
-                    const SizedBox(height: 24),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue[200]!),
-                      ),
-                      child: Column(
-                        children: [
-                          const Icon(Icons.info_outline, color: Colors.blue),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Access Request Sent',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'The patient will be notified to unlock this document for you.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                          ),
-                        ],
-                      ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Waiting for Patient Approval',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black87,
                     ),
-                    const SizedBox(height: 16),
-                    Row(
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'The document owner needs to approve your access request. Please wait...',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: greyText,
+                      fontSize: 16,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: lightGreen,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: primaryGreen.withOpacity(0.2)),
+                    ),
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _loadShareRecord(_shareRecord!.shareId),
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Check Status'),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.all(16),
-                            ),
+                        const Icon(Icons.check_circle_outline, color: primaryGreen, size: 28),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Access Request Sent',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: darkGreen,
+                            fontSize: 16,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.green[50],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.green[600]!),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Auto-checking...',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.green[600],
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
+                        const SizedBox(height: 8),
+                        Text(
+                          'The patient will be notified to unlock this document for you.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: darkGreen.withOpacity(0.8),
+                            height: 1.4,
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _loadShareRecord(_shareRecord!.shareId),
+                          icon: const Icon(Icons.refresh, color: primaryGreen),
+                          label: const Text(
+                            'Check Status',
+                            style: TextStyle(
+                              color: primaryGreen,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: primaryGreen),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: lightGreen,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: const AlwaysStoppedAnimation<Color>(primaryGreen),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Auto-checking...',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: darkGreen,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
@@ -317,7 +492,6 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
       },
     );
   }
-
 
   Widget _buildDocumentView() {
     return SingleChildScrollView(
@@ -328,115 +502,139 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
           // Warning banner
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.orange[50],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange),
+              color: Colors.amber[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.amber[200]!),
             ),
             child: const Row(
               children: [
-                Icon(Icons.warning, color: Colors.orange),
-                SizedBox(width: 8),
+                Icon(Icons.security, color: Colors.amber),
+                SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     'This is a shared medical document. Handle with confidentiality.',
-                    style: TextStyle(fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
           // Document preview
-          Card(
-            child: Container(
-              width: double.infinity,
-              height: 300,
-              padding: const EdgeInsets.all(16),
-              child: _document!.fileType == 'image'
-                  ? CachedNetworkImage(
-                      imageUrl: _ipfsService.getFileUrl(_document!.ipfsCid),
-                      fit: BoxFit.contain,
-                      placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
-                      errorWidget: (context, url, error) => const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.error, size: 48, color: Colors.red),
-                            Text('Failed to load image'),
-                          ],
+          Container(
+            width: double.infinity,
+            height: 320,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: _document!.fileType == 'image'
+                ? GestureDetector(
+                    onTap: () => _openImageViewer(),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CachedNetworkImage(
+                        imageUrl: _ipfsService.getFileUrl(_document!.ipfsCid),
+                        fit: BoxFit.contain,
+                        placeholder: (context, url) => const Center(
+                          child: CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(primaryGreen),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => const Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.error, size: 48, color: Colors.red),
+                              SizedBox(height: 8),
+                              Text('Failed to load image'),
+                            ],
+                          ),
                         ),
                       ),
-                    )
-                  : const Center(
+                    ),
+                  )
+                : GestureDetector(
+                    onTap: () => _openPdfViewer(),
+                    child: const Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.picture_as_pdf, size: 64, color: Colors.red),
+                          SizedBox(height: 12),
+                          Text(
+                            'PDF Document',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           SizedBox(height: 8),
-                          Text('PDF Document'),
-                          SizedBox(height: 4),
-                          Text('Tap download to view full document'),
+                          Text(
+                            'Tap to view full document',
+                            style: TextStyle(color: greyText),
+                          ),
                         ],
                       ),
                     ),
-            ),
+                  ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
           // Document information
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Document Information',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Document Information',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
                   ),
-                  const SizedBox(height: 16),
-                  _buildInfoRow('File Name', _document!.fileName),
-                  _buildInfoRow('Type', _document!.documentType),
-                  _buildInfoRow('Doctor', _document!.doctorName),
-                  _buildInfoRow('Hospital', _document!.hospitalName),
-                  _buildInfoRow('Date', _formatDate(_document!.documentDate)),
-                  if (_document!.notes.isNotEmpty)
-                    _buildInfoRow('Notes', _document!.notes),
-                ],
-              ),
+                ),
+                const SizedBox(height: 20),
+                _buildInfoRow('File Name', _document!.fileName),
+                _buildInfoRow('Type', _document!.documentType),
+                _buildInfoRow('Doctor', _document!.doctorName),
+                _buildInfoRow('Hospital', _document!.hospitalName),
+                _buildInfoRow('Date', _formatDate(_document!.documentDate)),
+                if (_document!.notes.isNotEmpty)
+                  _buildInfoRow('Notes', _document!.notes),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
-          // Actions
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _downloadDocument,
-                      icon: const Icon(Icons.download),
-                      label: const Text('Download Document'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.all(16),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Share expires: ${_formatDateTime(_shareRecord!.expiresAt)}',
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          
+          
         ],
       ),
     );
@@ -447,9 +645,18 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          CircularProgressIndicator(),
+          CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(primaryGreen),
+          ),
           SizedBox(height: 16),
-          Text('Loading document...'),
+          Text(
+            'Loading document...',
+            style: TextStyle(
+              color: greyText,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ],
       ),
     );
@@ -457,19 +664,32 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
 
   Widget _buildInfoRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 80,
+            width: 90,
             child: Text(
               label,
-              style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.grey),
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: greyText,
+                fontSize: 14,
+              ),
             ),
           ),
-          const Text(': '),
-          Expanded(child: Text(value)),
+          const Text(': ', style: TextStyle(color: greyText)),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Colors.black87,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -483,7 +703,6 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     _scannerController?.dispose();
     _scannerController = null;
 
-    // Extract shareId from URL
     final uri = Uri.tryParse(link);
     String? shareId;
 
@@ -492,7 +711,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     } else if (link.contains('/share/')) {
       shareId = link.split('/share/').last;
     } else {
-      shareId = link; // Assume direct share ID
+      shareId = link;
     }
 
     if (shareId != null) {
@@ -529,16 +748,13 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         _shareRecord = shareRecord;
       });
 
-      // Check if document is unlocked
       if (!shareRecord.unlocked) {
-        // Request access if not already requested
         if (!shareRecord.accessRequested) {
           await _requestAccess();
         }
         return;
       }
 
-      // Once unlocked, load document immediately (no PIN required from receiver)
       await _loadDocument();
 
     } catch (e) {
@@ -552,12 +768,10 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
 
   Future<void> _requestAccess() async {
     try {
-      // Update the share record to mark access as requested
       await _firebaseService.updateShareRecord(_shareRecord!.shareId, {
         'accessRequested': true,
       });
 
-      // Update local state
       setState(() {
         _shareRecord = _shareRecord!.copyWith(accessRequested: true);
       });
@@ -565,7 +779,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Access request sent to document owner'),
-          backgroundColor: Colors.green,
+          backgroundColor: primaryGreen,
         ),
       );
     } catch (e) {
@@ -573,19 +787,16 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
     }
   }
 
-
   Future<void> _loadDocument() async {
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // In a real implementation, you would fetch the document metadata
-      // For now, create a mock document with the IPFS CID
       _document = HealthDocument(
         id: _shareRecord!.documentId,
         fileName: 'Shared Document',
-        fileType: 'image', // You'd determine this from metadata
+        fileType: 'image',
         ipfsCid: _shareRecord!.ipfsCid,
         documentType: 'Shared',
         doctorName: 'Shared Document',
@@ -596,7 +807,6 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         createdAt: DateTime.now(),
       );
 
-      // Always log access when document is loaded
       await _logAccess();
 
     } catch (e) {
@@ -614,8 +824,8 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
         id: '',
         shareId: _shareRecord!.shareId,
         documentId: _shareRecord!.documentId,
-        viewerId: null, // Anonymous access
-        viewerIp: null, // Would be populated on server side
+        viewerId: null,
+        viewerIp: null,
         accessedAt: DateTime.now(),
         action: 'viewed',
       );
@@ -645,8 +855,10 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Download URL: $downloadUrl'),
+          backgroundColor: primaryGreen,
           action: SnackBarAction(
             label: 'Open',
+            textColor: Colors.white,
             onPressed: () {
               // In a real app, you would open the URL in browser or download the file
             },
@@ -670,7 +882,7 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor: Colors.red,
+          backgroundColor: Colors.red[600],
         ),
       );
     }
@@ -682,6 +894,30 @@ class _ShareViewScreenState extends State<ShareViewScreen> {
 
   String _formatDateTime(DateTime date) {
     return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _openImageViewer() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ImageViewerScreen(
+          imageUrl: _ipfsService.getFileUrl(_document!.ipfsCid),
+          title: _document!.fileName,
+        ),
+      ),
+    );
+  }
+
+  void _openPdfViewer() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PdfViewerScreen(
+          pdfUrl: _ipfsService.getFileUrl(_document!.ipfsCid),
+          title: _document!.fileName,
+        ),
+      ),
+    );
   }
 
   @override
