@@ -113,14 +113,15 @@ class _SenderNotificationsScreenState extends State<SenderNotificationsScreen> {
 
     if (confirmed == true) {
       try {
+        // Update the share record to revoke access
         await _firebaseService.updateShareRecord(shareRecord.id, {
           'active': false,
-          'rejectedAt': Timestamp.now(),
-          'rejectedBy': 'owner',
+          'revokedAt': Timestamp.now(),
+          'revokedBy': 'owner',
           'status': 'revoked',
         });
 
-        // Log the revocation for debugging
+        // Log the revocation
         debugPrint('Share record ${shareRecord.id} revoked successfully');
 
         if (mounted) {

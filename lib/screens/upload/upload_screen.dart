@@ -695,158 +695,328 @@ class _UploadScreenState extends State<UploadScreen> {
     };
   }
 
-  String _extractDoctorName(String text) {
-    // Advanced ML-based doctor name extraction with multiple strategies
-    List<String> lines = text.split('\n');
-    
-    // Strategy 1: Look for explicit doctor patterns
-    List<RegExp> doctorPatterns = [
-      RegExp(r'(?:Dr\.?\s+|Doctor\s+)([A-Z][A-Z\s]+[A-Z])', caseSensitive: false),
-      RegExp(r'([A-Z]{2,}\s+[A-Z]{2,}\s+[A-Z]{2,})\s*(?:MD|MBBS|MS|MHD)?', caseSensitive: false),
-      RegExp(r'Consultant\s*[:\-]?\s*(?:Dr\.?\s*)?([A-Z][A-Z\s]+)', caseSensitive: false),
-    ];
-    
-    for (String line in lines) {
-      for (RegExp pattern in doctorPatterns) {
-        Match? match = pattern.firstMatch(line.trim());
-        if (match != null && match.group(1) != null) {
-          String doctorName = match.group(1)!.trim();
-          doctorName = doctorName.replaceAll(RegExp(r'^(Dr\.?\s*|Doctor\s*)', caseSensitive: false), '');
-          
-          // Validate extracted name (should be 2-4 words, all caps or title case)
-          if (_isValidDoctorName(doctorName)) {
-            return _formatDoctorName(doctorName);
-          }
-        }
-      }
-    }
-    
-    // Strategy 2: Look for names near medical keywords
-    for (int i = 0; i < lines.length; i++) {
-      String line = lines[i].toLowerCase();
-      if (line.contains('consultant') || line.contains('doctor') || 
-          line.contains('physician') || line.contains('specialist')) {
+  // Replace these methods in your _UploadScreenState class
+
+String _extractDoctorName(String text) {
+  List<String> lines = text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+  
+  // Strategy 1: Direct "Dr." or "Doctor" prefix patterns
+  List<RegExp> directDoctorPatterns = [
+    // Dr. Name or Dr Name
+    RegExp(r'Dr\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})', caseSensitive: false),
+    // Doctor Name
+    RegExp(r'Doctor\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})', caseSensitive: false),
+    // Dr. ALL CAPS NAME
+    RegExp(r'Dr\.?\s+([A-Z]+(?:\s+[A-Z]+){1,3})', caseSensitive: false),
+    // With qualifications: Dr. Name MD/MBBS/MS
+    RegExp(r'Dr\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*,?\s*(?:M\.?D\.?|MBBS|M\.?S\.?|DNB)?', caseSensitive: false),
+  ];
+  
+  for (String line in lines) {
+    for (RegExp pattern in directDoctorPatterns) {
+      Match? match = pattern.firstMatch(line);
+      if (match != null && match.group(1) != null) {
+        String doctorName = match.group(1)!.trim();
         
-        // Check current line and next few lines for names
-        for (int j = i; j < i + 3 && j < lines.length; j++) {
-          String candidateLine = lines[j].trim();
-          RegExp namePattern = RegExp(r'^([A-Z]{2,}\s+[A-Z]{2,}(?:\s+[A-Z]{2,})?)$');
-          Match? match = namePattern.firstMatch(candidateLine);
+        // Clean up any trailing punctuation or qualifications
+        doctorName = doctorName.replaceAll(RegExp(r'[,\.\:\-]+$'), '');
+        
+        if (_isValidDoctorName(doctorName)) {
+          return _formatDoctorName(doctorName);
+        }
+      }
+    }
+  }
+  
+  // Strategy 2: Look for names near medical keywords
+  List<String> medicalKeywords = ['consultant', 'doctor', 'physician', 'specialist', 'surgeon', 'practitioner'];
+  
+  for (int i = 0; i < lines.length; i++) {
+    String lineLower = lines[i].toLowerCase();
+    
+    // Check if line contains medical keyword
+    bool hasMedicalKeyword = medicalKeywords.any((keyword) => lineLower.contains(keyword));
+    
+    if (hasMedicalKeyword) {
+      // Search current line and next 2 lines
+      for (int j = i; j <= i + 2 && j < lines.length; j++) {
+        String candidateLine = lines[j].trim();
+        
+        // Check if line starts with Dr. or Doctor
+        if (RegExp(r'^(?:Dr\.?|Doctor)\s', caseSensitive: false).hasMatch(candidateLine)) {
+          RegExp nameExtract = RegExp(r'^(?:Dr\.?|Doctor)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})', caseSensitive: false);
+          Match? match = nameExtract.firstMatch(candidateLine);
+          if (match != null && match.group(1) != null) {
+            String name = match.group(1)!.trim();
+            if (_isValidDoctorName(name)) {
+              return _formatDoctorName(name);
+            }
+          }
+        }
+        
+        // Check for capitalized names (2-4 words)
+        RegExp capsNamePattern = RegExp(r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})(?:\s|,|$)');
+        Match? match = capsNamePattern.firstMatch(candidateLine);
+        if (match != null && _isValidDoctorName(match.group(1)!)) {
+          return _formatDoctorName(match.group(1)!);
+        }
+      }
+    }
+  }
+  
+  // Strategy 3: Look for signature-like patterns at the bottom
+  // Check last 5 lines for doctor signatures
+  int startIndex = lines.length > 5 ? lines.length - 5 : 0;
+  for (int i = startIndex; i < lines.length; i++) {
+    String line = lines[i];
+    
+    // Signature pattern: Dr. Name or just capitalized names
+    if (RegExp(r'^Dr\.?\s', caseSensitive: false).hasMatch(line)) {
+      RegExp sigPattern = RegExp(r'^Dr\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})', caseSensitive: false);
+      Match? match = sigPattern.firstMatch(line);
+      if (match != null && _isValidDoctorName(match.group(1)!)) {
+        return _formatDoctorName(match.group(1)!);
+      }
+    }
+  }
+  
+  // Strategy 4: Find lines that are just names (for letterheads)
+  for (int i = 0; i < math.min(10, lines.length); i++) {
+    String line = lines[i];
+    
+    // Check if it's a name-only line (2-4 capitalized words)
+    RegExp nameOnlyPattern = RegExp(r'^([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})$');
+    Match? match = nameOnlyPattern.firstMatch(line);
+    
+    if (match != null) {
+      String potentialName = match.group(1)!;
+      
+      // Check next line for qualifications or medical keywords
+      if (i + 1 < lines.length) {
+        String nextLine = lines[i + 1].toLowerCase();
+        if (nextLine.contains('mbbs') || nextLine.contains('m.d') || 
+            nextLine.contains('consultant') || nextLine.contains('specialist') ||
+            nextLine.contains('doctor') || nextLine.contains('physician')) {
           
-          if (match != null && _isValidDoctorName(match.group(1)!)) {
-            return _formatDoctorName(match.group(1)!);
+          if (_isValidDoctorName(potentialName)) {
+            return _formatDoctorName(potentialName);
           }
         }
       }
     }
+  }
+  
+  return '';
+}
+
+bool _isValidDoctorName(String name) {
+  String cleanName = name.trim();
+  if (cleanName.isEmpty) return false;
+  
+  List<String> words = cleanName.split(RegExp(r'\s+'));
+  
+  // Should have 2-4 words
+  if (words.length < 2 || words.length > 4) return false;
+  
+  // Each word validation
+  for (String word in words) {
+    // Should be at least 2 characters
+    if (word.length < 2) return false;
     
-    // Strategy 3: Look for department-specific patterns
-    RegExp deptPattern = RegExp(r'([A-Z][A-Z\s]+)\s*:\s*(?:RHEUMATOLOGY|CARDIOLOGY|NEUROLOGY|ORTHOPEDIC|DERMATOLOGY|PEDIATRICS)', caseSensitive: false);
-    Match? deptMatch = deptPattern.firstMatch(text);
-    if (deptMatch != null && _isValidDoctorName(deptMatch.group(1)!)) {
-      return _formatDoctorName(deptMatch.group(1)!);
+    // Should not contain numbers
+    if (RegExp(r'\d').hasMatch(word)) return false;
+    
+    // Should not contain special characters except hyphen
+    if (RegExp(r'[^\w\s\-]').hasMatch(word)) return false;
+    
+    // Should start with a letter
+    if (!RegExp(r'^[A-Za-z]').hasMatch(word)) return false;
+  }
+  
+  // Exclude common non-name words
+  List<String> excludeWords = [
+    'DEPARTMENT', 'HOSPITAL', 'MEDICAL', 'CLINIC', 'CENTRE', 'CENTER', 
+    'TRUST', 'OFFICE', 'BUILDING', 'FLOOR', 'ROOM', 'SUITE', 'BLOCK',
+    'HEALTHCARE', 'HEALTH', 'CARE', 'PRESCRIPTION', 'PATIENT', 'NAME',
+    'ADDRESS', 'DATE', 'TIME', 'PHONE', 'EMAIL', 'WEBSITE', 'REGISTRATION',
+    'LICENSE', 'NUMBER', 'REGISTRY', 'COUNCIL', 'BOARD', 'ASSOCIATION'
+  ];
+  
+  String upperName = cleanName.toUpperCase();
+  for (String excluded in excludeWords) {
+    if (upperName.contains(excluded)) return false;
+  }
+  
+  return true;
+}
+
+String _formatDoctorName(String name) {
+  // Convert to proper title case
+  return name.trim().split(' ').map((word) {
+    if (word.isEmpty) return word;
+    
+    // Keep all-caps short words (like initials) as uppercase
+    if (word.length <= 2 && word.toUpperCase() == word) {
+      return word.toUpperCase();
     }
     
-    return '';
-  }
+    // Convert to title case
+    return word[0].toUpperCase() + word.substring(1).toLowerCase();
+  }).join(' ');
+}
 
-  bool _isValidDoctorName(String name) {
-    List<String> words = name.trim().split(RegExp(r'\s+'));
-    
-    // Should have 2-4 words
-    if (words.length < 2 || words.length > 4) return false;
-    
-    // Each word should be at least 2 characters
-    for (String word in words) {
-      if (word.length < 2) return false;
-      // Should not contain numbers or special characters
-      if (RegExp(r'[0-9\.\,\:\;\(\)\[\]]').hasMatch(word)) return false;
-    }
-    
-    // Should not be common non-name words
-    List<String> excludeWords = ['DEPARTMENT', 'HOSPITAL', 'MEDICAL', 'CLINIC', 'CENTRE', 'CENTER', 'TRUST', 'OFFICE'];
-    for (String word in words) {
-      if (excludeWords.contains(word.toUpperCase())) return false;
-    }
-    
-    return true;
-  }
-
-  String _formatDoctorName(String name) {
-    // Convert to proper title case
-    return name.split(' ').map((word) => 
-      word.toLowerCase().split('').asMap().entries.map((entry) => 
-        entry.key == 0 ? entry.value.toUpperCase() : entry.value
-      ).join('')
-    ).join(' ');
-  }
-
-  String _extractHospitalName(String text) {
-    // Advanced hospital name extraction with multiple strategies
-    List<String> lines = text.split('\n');
-    
-    // Strategy 1: Look for explicit hospital patterns
-    List<RegExp> hospitalPatterns = [
-      RegExp(r'([A-Z][a-zA-Z\s]+(?:Hospital|Medical|Clinic|Healthcare|Trust|Centre|Center))', caseSensitive: false),
-      RegExp(r'Registered Office\s*[:\-]?\s*([^,\n]+)', caseSensitive: false),
-      RegExp(r'([A-Z][a-zA-Z\s]+Charitable\s+Trust)', caseSensitive: false),
-      RegExp(r'^([A-Z][a-zA-Z\s]+Trust)$', caseSensitive: false, multiLine: true),
-    ];
-    
-    for (String line in lines) {
-      for (RegExp pattern in hospitalPatterns) {
-        Match? match = pattern.firstMatch(line.trim());
-        if (match != null && match.group(1) != null) {
-          String hospital = match.group(1)!.trim();
-          hospital = hospital.replaceAll(RegExp(r'\s*-.*$'), '');
-          
-          if (_isValidHospitalName(hospital)) {
-            return _formatHospitalName(hospital);
-          }
+String _extractHospitalName(String text) {
+  List<String> lines = text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+  
+  // Strategy 1: Explicit hospital patterns with keywords
+  List<RegExp> hospitalPatterns = [
+    // Name + Hospital/Medical/Clinic/etc
+    RegExp(r'^([A-Z][\w\s&,\.\-]+?)\s*(?:Hospital|Medical|Clinic|Healthcare|Health\s+Care|Nursing\s+Home|Polyclinic)', caseSensitive: false),
+    RegExp(r'^([A-Z][\w\s&,\.\-]+?)\s*(?:Charitable\s+Trust|Trust|Foundation)', caseSensitive: false),
+    // With location: Name Hospital, City
+    RegExp(r'^([A-Z][\w\s&,\.\-]+?Hospital)[\s,]', caseSensitive: false),
+    RegExp(r'^([A-Z][\w\s&,\.\-]+?Medical)[\s,]', caseSensitive: false),
+    RegExp(r'^([A-Z][\w\s&,\.\-]+?Clinic)[\s,]', caseSensitive: false),
+    // Registered Office pattern
+    RegExp(r'Registered\s+Office\s*[:\-]?\s*([^,\n]+)', caseSensitive: false),
+  ];
+  
+  for (String line in lines) {
+    for (RegExp pattern in hospitalPatterns) {
+      Match? match = pattern.firstMatch(line);
+      if (match != null && match.group(1) != null) {
+        String hospital = match.group(1)!.trim();
+        
+        // Clean up trailing punctuation
+        hospital = hospital.replaceAll(RegExp(r'[\.\,\:\-]+$'), '').trim();
+        
+        if (_isValidHospitalName(hospital)) {
+          return _formatHospitalName(hospital);
         }
       }
     }
+  }
+  
+  // Strategy 2: Look at first few lines (letterhead)
+  for (int i = 0; i < math.min(8, lines.length); i++) {
+    String line = lines[i];
     
-    // Strategy 2: Look for organization names at the top of document
-    for (int i = 0; i < math.min(5, lines.length); i++) {
-      String line = lines[i].trim();
-      if (line.length > 10 && _isValidHospitalName(line)) {
-        // Check if it contains medical-related keywords
-        if (RegExp(r'(medical|hospital|clinic|healthcare|trust|centre|center)', caseSensitive: false).hasMatch(line)) {
+    // Skip very short lines
+    if (line.length < 10) continue;
+    
+    String lineLower = line.toLowerCase();
+    
+    // Check if contains hospital-related keywords
+    bool hasHospitalKeyword = RegExp(
+      r'hospital|medical|clinic|healthcare|health\s+care|nursing|polyclinic|trust|foundation|charitable',
+      caseSensitive: false
+    ).hasMatch(line);
+    
+    if (hasHospitalKeyword && _isValidHospitalName(line)) {
+      // This line likely contains the hospital name
+      String cleaned = line.replaceAll(RegExp(r'[\.\,\:\-]+$'), '').trim();
+      return _formatHospitalName(cleaned);
+    }
+    
+    // Check if it's a prominent organization name (all caps, prominent position)
+    if (i < 3 && line.length > 15 && _isValidHospitalName(line)) {
+      // Check if next line has address or contact info (confirms this is organization name)
+      if (i + 1 < lines.length) {
+        String nextLine = lines[i + 1].toLowerCase();
+        if (nextLine.contains('address') || nextLine.contains('ph:') || 
+            nextLine.contains('phone') || nextLine.contains('email') ||
+            RegExp(r'\d{6}').hasMatch(nextLine)) { // Pincode pattern
           return _formatHospitalName(line);
         }
       }
     }
-    
-    return '';
   }
+  
+  // Strategy 3: Look for organization names with full words
+  for (int i = 0; i < math.min(5, lines.length); i++) {
+    String line = lines[i];
+    
+    // Pattern: Multi-word capitalized organization names
+    if (RegExp(r'^[A-Z][\w\s&,\.\-]{15,}$').hasMatch(line)) {
+      // Must contain at least 3 words
+      List<String> words = line.split(RegExp(r'\s+'));
+      if (words.length >= 3 && _isValidHospitalName(line)) {
+        return _formatHospitalName(line);
+      }
+    }
+  }
+  
+  return '';
+}
 
-  bool _isValidHospitalName(String name) {
-    if (name.length < 5) return false;
+bool _isValidHospitalName(String name) {
+  String cleanName = name.trim();
+  
+  // Minimum length check
+  if (cleanName.length < 5) return false;
+  
+  // Should not be just numbers
+  if (RegExp(r'^\d+$').hasMatch(cleanName)) return false;
+  
+  // Should contain at least 2 words
+  if (!cleanName.contains(' ')) return false;
+  
+  // Exclude common non-hospital text patterns
+  List<String> excludePatterns = [
+    'PATIENT', 'AGE', 'SEX', 'DATE', 'TIME', 'DIAGNOSIS', 'PRESCRIPTION',
+    'MEDICINE', 'DOSAGE', 'QUANTITY', 'EPISODE', 'VISIT', 'APPOINTMENT',
+    'BILL', 'INVOICE', 'RECEIPT', 'AMOUNT', 'TOTAL', 'PAYMENT',
+    'MORNING', 'AFTERNOON', 'EVENING', 'NIGHT', 'MALE', 'FEMALE',
+    'YEARS', 'MONTHS', 'DAYS', 'ADDRESS OF PATIENT', 'PHONE NUMBER'
+  ];
+  
+  String upperName = cleanName.toUpperCase();
+  for (String excluded in excludePatterns) {
+    if (upperName.contains(excluded)) return false;
+  }
+  
+  // Should not be mostly numbers
+  int digitCount = cleanName.replaceAll(RegExp(r'\D'), '').length;
+  if (digitCount > cleanName.length * 0.3) return false;
+  
+  return true;
+}
+
+String _formatHospitalName(String name) {
+  String cleaned = name.trim();
+  
+  // Remove common prefixes/suffixes that might be included
+  cleaned = cleaned.replaceAll(RegExp(r'^(The\s+)', caseSensitive: false), '');
+  cleaned = cleaned.replaceAll(RegExp(r'\s*[\-\,].*$'), ''); // Remove everything after dash or comma
+  
+  // Convert to proper title case while preserving acronyms and special formatting
+  return cleaned.split(' ').map((word) {
+    if (word.isEmpty) return word;
     
-    // Should not be just numbers or single words
-    if (RegExp(r'^\d+$').hasMatch(name) || !name.contains(' ')) return false;
-    
-    // Should not contain common non-hospital words
-    List<String> excludeWords = ['DEPARTMENT', 'EPISODE', 'PATIENT', 'AGE', 'SEX', 'DATE', 'TIME'];
-    for (String word in excludeWords) {
-      if (name.toUpperCase().contains(word)) return false;
+    // Keep short all-caps words (acronyms) as-is
+    if (word.length <= 4 && word.toUpperCase() == word && !RegExp(r'[a-z]').hasMatch(word)) {
+      return word.toUpperCase();
     }
     
-    return true;
-  }
+    // Special words that should be lowercase
+    List<String> lowercaseWords = ['and', 'of', 'the', 'for', 'in', 'at', 'to', 'a', 'an'];
+    if (lowercaseWords.contains(word.toLowerCase())) {
+      return word.toLowerCase();
+    }
+    
+    // Convert to title case
+    return word[0].toUpperCase() + word.substring(1).toLowerCase();
+  }).join(' ');
+}
 
-  String _formatHospitalName(String name) {
-    // Convert to proper title case while preserving acronyms
-    return name.split(' ').map((word) {
-      if (word.length <= 3 && word.toUpperCase() == word) {
-        return word; // Keep acronyms as-is
-      }
-      return word.toLowerCase().split('').asMap().entries.map((entry) => 
-        entry.key == 0 ? entry.value.toUpperCase() : entry.value
-      ).join('');
-    }).join(' ');
-  }
+  
+
+ 
+  
+
+  
+
+  
 
   String _extractDocumentDate(String text) {
     // Common date patterns
